@@ -1,6 +1,6 @@
 light = input("enter light color : ")
 if(light == "red"):
-    print("stop car"):
+    print("stop car")
 elif(light == "yellow"):
     print("ready car")
 elif(light == "green"):
