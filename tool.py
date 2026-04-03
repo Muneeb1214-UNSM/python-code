@@ -1,52 +1,50 @@
 import streamlit as st
 import google.generativeai as genai
 
-# Page Setup
-st.set_page_config(page_title="Pakistani Student AI Notes Maker", page_icon="🎓")
-st.title("🎓 Pak-Student AI Notes Maker")
-st.write("Apne mushkil topics ko asaan Roman Urdu aur English mein convert karen.")
+# Page Config
+st.set_page_config(page_title="AI Notes Maker", page_icon="🎓")
 
-# Sidebar for API Key
-st.sidebar.header("Settings")
+st.title("🎓 Pak-Student AI Notes Maker")
+st.write("Apne concepts asaan Urdu/English mein samjhein.")
+
+# Sidebar
 api_key = st.sidebar.text_input("Enter Gemini API Key", type="password")
 
 if api_key:
     try:
         genai.configure(api_key=api_key)
-        # Yahan hum model ka naya naam use kar rahe hain
-        model = genai.GenerativeModel('gemini-1.5-flash') 
+        
+        # Try to find the best available model
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            # Test if model exists
+            test_response = model.generate_content("test")
+        except:
+            model = genai.GenerativeModel('gemini-pro')
 
-        # Input Box
-        user_input = st.text_area("Yahan apna topic ya paragraph paste karen:", placeholder="Example: Newton's second law of motion...")
+        # User Input
+        user_input = st.text_area("Yahan topic paste karen:", height=200)
 
         if st.button("Generate Notes"):
             if user_input:
-                with st.spinner('AI soch raha hai...'):
+                with st.spinner('AI Notes bana raha hai, sabar karen...'):
                     prompt = f"""
-                    You are an expert academic tutor for Pakistani university students. 
-                    The user has provided this text: {user_input}
+                    You are a helpful tutor for Pakistani university students.
+                    Topic/Text: {user_input}
                     
                     Please provide:
-                    1. Short Summary (Simple English).
-                    2. Detailed Explanation in 'Roman Urdu' (Hinglish) so a desi student can easily understand.
-                    3. 3-5 Important Exam Questions from this topic.
-                    4. Use bullet points and headings.
+                    1. Summary in 5 simple bullet points.
+                    2. Explanation in 'Roman Urdu' (Mix of Urdu and English) so it sounds like a teacher explaining to a student.
+                    3. 3 potential exam questions.
                     """
-                    
                     response = model.generate_content(prompt)
-                    
-                    st.success("Tayyar hain aapke notes!")
-                    st.markdown("---")
-                    st.markdown(response.text)
+                    st.markdown("### Aapke Notes:")
+                    st.write(response.text)
             else:
-                st.warning("Please enter some text first!")
-                
+                st.warning("Pehle kuch likh to dein!")
+
     except Exception as e:
         st.error(f"Ek masla aa gaya hai: {e}")
+        st.info("Mashwara: Check karen ke aapki API Key sahi hai ya nahi.")
 else:
-    st.info("Side bar mein apni Gemini API Key enter karen. (Ye key aap aistudio.google.com se le sakte hain)")
-
-# Footer
-st.markdown("---")
-st.caption("Made for Pakistani Students 🇵🇰")
-    
+    st.info("Side bar mein API Key enter karen.")
