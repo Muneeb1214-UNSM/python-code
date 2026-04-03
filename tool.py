@@ -2,15 +2,11 @@ import streamlit as st
 import google.generativeai as genai
 from fpdf import FPDF
 
-# --- CONFIGURATION & DESIGN ---
+# --- DESIGN & UI ---
 st.set_page_config(page_title="UniNotes AI | Pak Student Assistant", page_icon="🎓", layout="centered")
 
-# Custom CSS for Professional Look
 st.markdown("""
     <style>
-    .main {
-        background-color: #f5f7f9;
-    }
     .stButton>button {
         width: 100%;
         border-radius: 10px;
@@ -19,87 +15,91 @@ st.markdown("""
         color: white;
         font-weight: bold;
     }
-    .stTextArea>div>div>textarea {
-        border-radius: 10px;
-    }
-    .reportview-container .main .block-container{
-        padding-top: 2rem;
-    }
-    h1 {
-        color: #006644;
-        text-align: center;
-    }
+    h1 { color: #006644; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- BACKEND API SETUP ---
-# Streamlit Secrets se key uthayega
-try:
-    API_KEY = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=API_KEY)
-except:
-    st.error("Backend mein API Key nahi mili! Please Streamlit Secrets check karen.")
+# --- BACKEND LOGIC ---
+def get_best_model():
+    """Ye function khud dhondega ke kaunsa model available hai"""
+    try:
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        # Priority wise check: Flash first, then Pro
+        if 'models/gemini-1.5-flash' in available_models:
+            return 'gemini-1.5-flash'
+        elif 'models/gemini-pro' in available_models:
+            return 'gemini-pro'
+        else:
+            # Agar koi aur mil jaye
+            return available_models[0].split('/')[-1] if available_models else "gemini-pro"
+    except:
+        return "gemini-pro" # Safe fallback
 
 def create_pdf(text_content):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
+    # Remove characters that PDF can't handle
     clean_text = text_content.encode('latin-1', 'ignore').decode('latin-1')
     pdf.multi_cell(0, 10, txt=clean_text)
     return pdf.output(dest='S').encode('latin-1')
 
-# --- UI LAYOUT ---
+# --- MAIN APP ---
 st.title("🎓 UniNotes AI")
-st.markdown("<p style='text-align: center; color: gray;'>Pakistan's Smartest AI Note Maker for University Students</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Get Professional University Notes in Seconds</p>", unsafe_allow_html=True)
 
-with st.container():
-    st.info("💡 **Tip:** Paste your lecture slides or book paragraphs below to get perfect notes.")
-    user_input = st.text_area("", height=200, placeholder="Example: Describe the process of Mitosis or explain the 1973 Constitution of Pakistan...")
+# Secrets se key lena
+if "GEMINI_API_KEY" in st.secrets:
+    API_KEY = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=API_KEY)
     
-    col1, col2 = st.columns([1, 1])
-    generate_btn = st.button("✨ Generate Professional Notes")
-
-# --- LOGIC ---
-if generate_btn:
-    if user_input:
-        with st.spinner('🧠 AI is processing your request...'):
-            try:
-                # Behtar Model Selection
-                model = genai.GenerativeModel('gemini-1.5-flash')
-                
-                prompt = f"""
-                You are a senior professor. Based on this text: {user_input}
-                Please provide:
-                1. A 'Roman Urdu' (Hinglish) explanation as a 'Concept Clearer' for a student.
-                2. Professional 'Academic Notes' in pure English with headings.
-                3. 3 Exam-style Short Questions with answers.
-                4. A 'Key Takeaway' summary.
-                """
-                
-                response = model.generate_content(prompt)
-                st.session_state['notes'] = response.text
-            except Exception as e:
-                st.error(f"Error: {e}")
-    else:
-        st.warning("Please enter some text or topic first!")
-
-# --- DISPLAY & DOWNLOAD ---
-if 'notes' in st.session_state:
-    tab1, tab2 = st.tabs(["📝 View Notes", "📥 Download"])
+    user_input = st.text_area("Yahan apna topic ya lecture paste karen:", height=200)
     
-    with tab1:
-        st.markdown(st.session_state['notes'])
-    
-    with tab2:
-        st.write("Click below to download your notes in PDF format.")
-        pdf_bytes = create_pdf(st.session_state['notes'])
-        st.download_button(
-            label="📄 Download PDF",
-            data=pdf_bytes,
-            file_name="UniNotes_AI_Export.pdf",
-            mime="application/pdf"
-        )
+    if st.button("✨ Generate Professional Notes"):
+        if user_input:
+            with st.spinner('🧠 AI Notes bana raha hai...'):
+                try:
+                    # Auto detect model
+                    model_name = get_best_model()
+                    model = genai.GenerativeModel(model_name)
+                    
+                    prompt = f"""
+                    You are a university professor. Task: Create notes for a student.
+                    Text: {user_input}
+                    
+                    Structure:
+                    1. CONCEPT CLEARER (Easy Roman Urdu/Hinglish): Explain like a friend.
+                    2. FORMAL NOTES (Pure English): High-quality academic bullet points for exams.
+                    3. KEY TERMS (English): Define 3 main words.
+                    4. EXAM QUESTIONS (English): 3 likely questions.
+                    """
+                    
+                    response = model.generate_content(prompt)
+                    st.session_state['notes'] = response.text
+                    st.session_state['model_used'] = model_name
+                except Exception as e:
+                    st.error(f"Generation Error: {e}")
+        else:
+            st.warning("Kuch to likhen!")
 
-# Footer
+    # Display & Download
+    if 'notes' in st.session_state:
+        st.success(f"Notes Generated using {st.session_state['model_used']}!")
+        tab1, tab2 = st.tabs(["📝 View Notes", "📥 Download PDF"])
+        
+        with tab1:
+            st.markdown(st.session_state['notes'])
+        
+        with tab2:
+            pdf_bytes = create_pdf(st.session_state['notes'])
+            st.download_button(
+                label="📄 Download PDF",
+                data=pdf_bytes,
+                file_name="UniNotes_AI.pdf",
+                mime="application/pdf"
+            )
+else:
+    st.error("API Key Missing! Streamlit Settings -> Secrets mein 'GEMINI_API_KEY' add karen.")
+
 st.markdown("---")
-st.markdown("<p style='text-align: center;'>Made with ❤️ for Pakistani Students</p>", unsafe_allow_html=True)
+st.caption("Made for Pakistani University Students 🇵🇰")
