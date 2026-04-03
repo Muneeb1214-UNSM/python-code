@@ -2,20 +2,32 @@ import streamlit as st
 import google.generativeai as genai
 from fpdf import FPDF
 
-# --- DESIGN & UI ---
-st.set_page_config(page_title="UniNotes AI | Pak Student Assistant", page_icon="🎓", layout="centered")
+# --- PROFESSIONAL UI & PAKISTANI THEME ---
+st.set_page_config(page_title="PakAcademia AI | Pakistan's Smartest Study Tool", page_icon="🇵🇰", layout="centered")
 
+# Custom Styling (Professional Green & Minimalist White)
 st.markdown("""
     <style>
+    .main { background-color: #f8fbf9; }
     .stButton>button {
         width: 100%;
-        border-radius: 10px;
-        height: 3em;
-        background-color: #006644;
+        border-radius: 12px;
+        height: 3.5em;
+        background-color: #006644; /* Pakistani Dark Green */
         color: white;
-        font-weight: bold;
+        font-weight: 700;
+        font-size: 1.1em;
+        border: none;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        transition: 0.3s;
     }
-    h1 { color: #006644; text-align: center; }
+    .stButton>button:hover {
+        background-color: #004d33;
+        transform: translateY(-2px);
+    }
+    h1 { color: #006644; font-family: 'Helvetica', sans-serif; text-align: center; font-weight: 800; }
+    .stTextArea>div>div>textarea { border: 1px solid #006644; border-radius: 12px; padding: 15px; }
+    .footer { text-align: center; color: #666; font-size: 0.9em; margin-top: 60px; padding: 20px; border-top: 1px solid #ddd; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -23,71 +35,60 @@ st.markdown("""
 def get_best_model():
     try:
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        if 'models/gemini-1.5-flash' in available_models:
-            return 'gemini-1.5-flash'
-        elif 'models/gemini-pro' in available_models:
-            return 'gemini-pro'
-        else:
-            return available_models[0].split('/')[-1] if available_models else "gemini-pro"
-    except:
-        return "gemini-pro"
+        if 'models/gemini-1.5-flash' in available_models: return 'gemini-1.5-flash'
+        elif 'models/gemini-pro' in available_models: return 'gemini-pro'
+        return available_models[0].split('/')[-1] if available_models else "gemini-pro"
+    except: return "gemini-pro"
 
 def create_pdf(text_content):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    
-    # PDF mein Markdown (stars **) sahi nahi dikhte, unhein saaf kar rahe hain
+    pdf.set_font("Arial", size=11)
+    # Cleaning Markdown for PDF
     clean_text = text_content.replace('**', '').replace('#', '').replace('*', '-')
-    
-    # Unicode characters (like emojis) ko ignore kar rahe hain taake PDF crash na ho
     final_text = clean_text.encode('latin-1', 'ignore').decode('latin-1')
-    
     pdf.multi_cell(0, 10, txt=final_text)
-    
-    # Nayi library (fpdf2) mein bas .output() likhna kafi hai
-    return pdf.output() 
+    return pdf.output()
 
-# --- MAIN APP ---
-st.title("🎓 UniNotes AI")
-st.markdown("<p style='text-align: center;'>Get Professional University Notes in Seconds</p>", unsafe_allow_html=True)
+# --- MAIN INTERFACE ---
+st.markdown("<h1>🇵🇰 PakAcademia AI</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; font-weight: 500; color: #444;'>Empowering the Students of Pakistan with Intelligent Synthesis</p>", unsafe_allow_html=True)
+st.markdown("---")
 
+# Backend API Key Check
 if "GEMINI_API_KEY" in st.secrets:
-    API_KEY = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=API_KEY)
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     
-    user_input = st.text_area("Yahan apna topic ya lecture paste karen:", height=200, placeholder="Example: Describe the impact of AI on education...")
+    # Input Section
+    st.subheader("Analyze Materials")
+    user_input = st.text_area("Yahan apna topic, lecture notes, ya paragraph paste karen:", height=250, 
+                             placeholder="Example: Explain the concepts of Macroeconomics or summary of 1947 Independence Act...")
     
-    if st.button("✨ Generate Professional Notes"):
+    if st.button("✨ GENERATE PROFESSIONAL NOTES"):
         if user_input:
-            with st.spinner('🧠 AI Notes bana raha hai...'):
+            with st.spinner('⏳ PakAcademia AI is synthesizing your notes...'):
                 try:
-                    model_name = get_best_model()
-                    model = genai.GenerativeModel(model_name)
-                    
+                    model = genai.GenerativeModel(get_best_model())
                     prompt = f"""
-                    You are a university professor. Task: Create notes for a student.
-                    Text: {user_input}
+                    You are 'PakAcademia AI', an advanced educational assistant for university students in Pakistan.
+                    Analyze this text: {user_input}
                     
-                    Structure:
-                    1. CONCEPT CLEARER (Easy Roman Urdu/Hinglish): Explain clearly.
-                    2. FORMAL NOTES (Pure English): High-quality academic bullet points.
-                    3. KEY TERMS (English): Define 3 main words.
-                    4. EXAM QUESTIONS (English): 3 likely questions.
+                    Please provide:
+                    1. CONCEPT CLEARER (Roman Urdu): Explain the topic in simple, friendly Roman Urdu (Hinglish) as a mentor.
+                    2. ACADEMIC SUMMARY (English): Detailed, bulleted professional notes for exam preparation.
+                    3. KEY TERMINOLOGY (English): Define 3-5 critical academic terms.
+                    4. PREDICTED EXAM QUESTIONS (English): 3-5 high-probability university exam questions.
                     """
-                    
                     response = model.generate_content(prompt)
                     st.session_state['notes'] = response.text
-                    st.session_state['model_used'] = model_name
                 except Exception as e:
-                    st.error(f"Generation Error: {e}")
+                    st.error(f"System Alert: {e}")
         else:
-            st.warning("Kuch to likhen!")
+            st.warning("Please provide input text to generate notes.")
 
-    # Display & Download
+    # Output Display
     if 'notes' in st.session_state:
-        st.success(f"Notes Generated!")
-        
+        st.markdown("### Analysis Result")
         tab1, tab2 = st.tabs(["📝 View Notes", "📥 Download PDF"])
         
         with tab1:
@@ -95,18 +96,17 @@ if "GEMINI_API_KEY" in st.secrets:
         
         with tab2:
             try:
-                # PDF banate waqt error handle karna
                 pdf_output = create_pdf(st.session_state['notes'])
                 st.download_button(
-                    label="📄 Download PDF",
-                    data=bytes(pdf_output), # PDF ko bytes mein convert kiya
-                    file_name="UniNotes_AI.pdf",
+                    label="📄 Download Official PDF Document",
+                    data=bytes(pdf_output),
+                    file_name="PakAcademia_AI_Notes.pdf",
                     mime="application/pdf"
                 )
             except Exception as e:
-                st.error(f"PDF Banane mein masla: {e}")
+                st.error(f"Export Error: {e}")
 else:
-    st.error("API Key Missing! Streamlit Settings -> Secrets mein 'GEMINI_API_KEY' add karen.")
+    st.error("Configuration Error: GEMINI_API_KEY not found in backend secrets.")
 
-st.markdown("---")
-st.caption("Made for Pakistani University Students 🇵🇰")
+# Footer
+st.markdown("<div class='footer'>PakAcademia AI v1.0 | Supporting the Future Leaders of Pakistan 🇵🇰</div>", unsafe_allow_html=True)
