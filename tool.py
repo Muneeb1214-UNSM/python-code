@@ -10,102 +10,94 @@ st.markdown("""
     .stButton>button {
         width: 100%; border-radius: 12px; height: 3.5em;
         background-color: #006644; color: white; font-weight: 700;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
-    h1 { color: #006644; text-align: center; font-weight: 800; }
-    .stTextArea>div>div>textarea { border: 1px solid #006644; border-radius: 10px; }
-    .footer { text-align: center; color: #666; font-size: 0.9em; margin-top: 50px; padding: 20px; border-top: 1px solid #ddd; }
+    h1 { color: #006644; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- PDF GENERATION LOGIC ---
+# --- BACKEND MODEL LOGIC ---
+def get_working_model():
+    """Ye function khud dhoondega ke kaunsa model available hai"""
+    try:
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Priority wise check: 1.5-flash, 1.5-pro, phir purana gemini-pro
+        if any('gemini-1.5-flash' in m for m in available_models):
+            return 'gemini-1.5-flash'
+        elif any('gemini-1.5-pro' in m for m in available_models):
+            return 'gemini-1.5-pro'
+        elif any('gemini-pro' in m for m in available_models):
+            return 'gemini-pro'
+        else:
+            # Agar koi aur mil jaye
+            return available_models[0].replace('models/', '') if available_models else "gemini-pro"
+    except Exception as e:
+        # Fallback to a safe default
+        return "gemini-pro"
+
 def create_pdf(text_content):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=11)
-    # Cleaning Markdown symbols for PDF compatibility
     clean_text = text_content.replace('**', '').replace('#', '').replace('*', '-')
     final_text = clean_text.encode('latin-1', 'ignore').decode('latin-1')
     pdf.multi_cell(0, 10, txt=final_text)
     return pdf.output()
 
-# --- MAIN INTERFACE ---
+# --- MAIN APP ---
 st.markdown("<h1>🇵🇰 PakAcademia AI</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Custom Notes Generator for Pakistani University Students</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Smart Academic Assistant for Pakistani Students</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-# Secrets check
 if "GEMINI_API_KEY" in st.secrets:
     try:
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        model = genai.GenerativeModel('gemini-1.5-flash')
-
-        # USER INPUTS
-        st.subheader("📝 Setup Your Notes")
-        user_topic = st.text_area("Enter your question or topic:", height=150, placeholder="e.g. Write a detailed note on the 1973 Constitution of Pakistan...")
+        
+        # MODEL AUTO-DETECT
+        model_name = get_working_model()
+        model = genai.GenerativeModel(model_name)
+        
+        st.subheader("📝 Customize Your Notes")
+        user_topic = st.text_area("Enter your question or topic:", placeholder="e.g. Discuss the 18th Amendment...")
         
         col1, col2 = st.columns(2)
         with col1:
-            lang_choice = st.selectbox("Preferred Language:", ["English Only", "Roman Urdu (Hinglish)", "Urdu Script (اردو)"])
+            lang_choice = st.selectbox("Preferred Language:", ["English", "Roman Urdu", "Urdu"])
         with col2:
-            length_choice = st.selectbox("Notes Length:", ["Short (Summary)", "Medium (Detailed)", "Long (Comprehensive)"])
+            length_choice = st.selectbox("Length:", ["Short", "Medium", "Long"])
 
         if st.button("🚀 GENERATE PROFESSIONAL NOTES"):
             if user_topic:
-                with st.spinner('🧠 PakAcademia AI is synthesizing your notes...'):
+                with st.spinner(f'🧠 Using {model_name} to generate notes...'):
                     try:
-                        # Professional Prompt Building
                         prompt = f"""
-                        You are PakAcademia AI, a senior university professor.
-                        Task: Create high-quality academic notes for a student.
+                        You are PakAcademia AI, a professor.
                         Topic: {user_topic}
-                        Language Choice: {lang_choice}
-                        Length Choice: {length_choice}
+                        Language: {lang_choice}
+                        Length: {length_choice}
                         
-                        Instructions:
-                        1. If language is Roman Urdu, explain the concept like a friendly mentor.
-                        2. If English, use formal academic vocabulary.
-                        3. Structure the notes with:
-                           - Clear Headings
-                           - Detailed bullet points
-                           - 3 Important Exam-style Questions at the end.
+                        Structure: Heading, Concept Overview, Detailed Notes, and 3 Exam Questions.
                         """
-                        
                         response = model.generate_content(prompt)
-                        st.session_state['notes_result'] = response.text
-                        st.success("Success! Notes generated.")
+                        st.session_state['notes'] = response.text
+                        st.success(f"Generated successfully!")
                     except Exception as e:
-                        if "429" in str(e):
-                            st.error("⚠️ **Quota Full:** Google ki free limit khatam ho gayi hai. Please 1 minute baad try karen.")
-                        else:
-                            st.error(f"Error: {e}")
+                        st.error(f"Generation Error: {e}")
             else:
-                st.warning("Pehle koi topic to likhen!")
+                st.warning("Pehle kuch likhen!")
 
-        # DISPLAY & DOWNLOAD
-        if 'notes_result' in st.session_state:
+        if 'notes' in st.session_state:
             st.markdown("---")
-            tab1, tab2 = st.tabs(["📄 View Notes", "📥 Download PDF"])
-            
+            tab1, tab2 = st.tabs(["📝 View Notes", "📥 Download PDF"])
             with tab1:
-                st.markdown(st.session_state['notes_result'])
-            
+                st.markdown(st.session_state['notes'])
             with tab2:
-                try:
-                    pdf_data = create_pdf(st.session_state['notes_result'])
-                    st.download_button(
-                        label="📥 Download PDF Document",
-                        data=bytes(pdf_data),
-                        file_name="PakAcademia_Notes.pdf",
-                        mime="application/pdf"
-                    )
-                except Exception as e:
-                    st.error(f"PDF Error: {e}")
-                    
+                pdf_data = create_pdf(st.session_state['notes'])
+                st.download_button("📥 Download PDF", data=bytes(pdf_data), file_name="PakAcademia_Notes.pdf")
+
     except Exception as e:
         st.error(f"Configuration Error: {e}")
 else:
-    st.error("API Key Missing! Please add 'GEMINI_API_KEY' in Streamlit Secrets.")
+    st.error("API Key Missing!")
 
-# Footer
-st.markdown("<div class='footer'>PakAcademia AI | Made with ❤️ for the Students of Pakistan 🇵🇰</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; padding:20px;'>PakAcademia AI | 🇵🇰 Pakistan</div>", unsafe_allow_html=True)
