@@ -1,7 +1,6 @@
 import streamlit as st
 import google.generativeai as genai
 from fpdf import FPDF
-import random
 
 # --- PROFESSIONAL UI SETUP ---
 st.set_page_config(page_title="PakAcademia AI | Smart Notes", page_icon="🇵🇰", layout="centered")
@@ -14,6 +13,7 @@ st.markdown("""
         box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
     h1 { color: #006644; text-align: center; font-weight: 800; }
+    .stTextArea>div>div>textarea { border: 1px solid #006644; border-radius: 10px; }
     .footer { text-align: center; color: #666; font-size: 0.9em; margin-top: 50px; padding: 20px; border-top: 1px solid #ddd; }
     </style>
     """, unsafe_allow_html=True)
@@ -23,96 +23,89 @@ def create_pdf(text_content):
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=11)
+    # Cleaning Markdown symbols for PDF compatibility
     clean_text = text_content.replace('**', '').replace('#', '').replace('*', '-')
     final_text = clean_text.encode('latin-1', 'ignore').decode('latin-1')
     pdf.multi_cell(0, 10, txt=final_text)
     return pdf.output()
 
-# --- MULTI-KEY AI GENERATION LOGIC ---
-def generate_notes_with_retry(prompt):
-    keys = st.secrets["GEMINI_API_KEYS"]
-    # Keys ko random order mein shuffle karna taake load divide ho
-    random.shuffle(keys)
-    
-    last_error = ""
-    for key in keys:
-        try:
-            genai.configure(api_key=key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            response = model.generate_content(prompt)
-            return response.text, "Success"
-        except Exception as e:
-            last_error = str(e)
-            if "429" in last_error:
-                continue # Doosri key try karo
-            else:
-                return None, last_error
-    
-    return None, "QUOTA_EXCEEDED"
-
-# --- MAIN APP INTERFACE ---
+# --- MAIN INTERFACE ---
 st.markdown("<h1>🇵🇰 PakAcademia AI</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center;'>Advanced Academic Synthesis Tool for Pakistani Students</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Custom Notes Generator for Pakistani University Students</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-if "GEMINI_API_KEYS" in st.secrets:
-    # INPUT SECTION
-    st.subheader("📝 Customize Your Notes")
-    user_topic = st.text_area("Apna Sawal ya Topic enter karen:", height=150, placeholder="e.g. Discuss the role of Allama Iqbal in Pakistan Movement...")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        lang_choice = st.selectbox("Preferred Language:", ["English", "Roman Urdu (Hinglish)", "Urdu Script (اردو)"])
-    with col2:
-        length_choice = st.selectbox("Note Length:", ["Short (Summary)", "Medium (Detailed)", "Long (Comprehensive)"])
+# Secrets check
+if "GEMINI_API_KEY" in st.secrets:
+    try:
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        model = genai.GenerativeModel('gemini-1.5-flash')
 
-    if st.button("🚀 GENERATE PROFESSIONAL NOTES"):
-        if user_topic:
-            with st.spinner('🧠 PakAcademia AI is processing (Checking multiple servers)...'):
-                
-                # Custom prompt building
-                prompt = f"""
-                You are PakAcademia AI, a senior professor. 
-                Task: Create notes for a university student.
-                Topic: {user_topic}
-                Language: {lang_choice}
-                Length: {length_choice}
-                
-                Structure:
-                1. Concept Overview (Easy to understand)
-                2. Academic Detailed Notes (Formal)
-                3. Key Definitions
-                4. 3 Potential Exam Questions
-                """
-                
-                notes, status = generate_notes_with_retry(prompt)
-                
-                if notes:
-                    st.session_state['generated_notes'] = notes
-                elif status == "QUOTA_EXCEEDED":
-                    st.error("⚠️ **Server Full:** Sabhi keys ka quota khatam ho gaya hai. Please 1 minute baad try karen.")
-                else:
-                    st.error(f"Error: {status}")
-        else:
-            st.warning("Pehle koi topic to likhen!")
+        # USER INPUTS
+        st.subheader("📝 Setup Your Notes")
+        user_topic = st.text_area("Enter your question or topic:", height=150, placeholder="e.g. Write a detailed note on the 1973 Constitution of Pakistan...")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            lang_choice = st.selectbox("Preferred Language:", ["English Only", "Roman Urdu (Hinglish)", "Urdu Script (اردو)"])
+        with col2:
+            length_choice = st.selectbox("Notes Length:", ["Short (Summary)", "Medium (Detailed)", "Long (Comprehensive)"])
 
-    # DISPLAY SECTION
-    if 'generated_notes' in st.session_state:
-        st.markdown("---")
-        tab1, tab2 = st.tabs(["📄 View Notes", "📥 Download"])
-        
-        with tab1:
-            st.markdown(st.session_state['generated_notes'])
-        
-        with tab2:
-            pdf_data = create_pdf(st.session_state['generated_notes'])
-            st.download_button(
-                label="📥 Download as PDF",
-                data=bytes(pdf_data),
-                file_name="PakAcademia_Notes.pdf",
-                mime="application/pdf"
-            )
+        if st.button("🚀 GENERATE PROFESSIONAL NOTES"):
+            if user_topic:
+                with st.spinner('🧠 PakAcademia AI is synthesizing your notes...'):
+                    try:
+                        # Professional Prompt Building
+                        prompt = f"""
+                        You are PakAcademia AI, a senior university professor.
+                        Task: Create high-quality academic notes for a student.
+                        Topic: {user_topic}
+                        Language Choice: {lang_choice}
+                        Length Choice: {length_choice}
+                        
+                        Instructions:
+                        1. If language is Roman Urdu, explain the concept like a friendly mentor.
+                        2. If English, use formal academic vocabulary.
+                        3. Structure the notes with:
+                           - Clear Headings
+                           - Detailed bullet points
+                           - 3 Important Exam-style Questions at the end.
+                        """
+                        
+                        response = model.generate_content(prompt)
+                        st.session_state['notes_result'] = response.text
+                        st.success("Success! Notes generated.")
+                    except Exception as e:
+                        if "429" in str(e):
+                            st.error("⚠️ **Quota Full:** Google ki free limit khatam ho gayi hai. Please 1 minute baad try karen.")
+                        else:
+                            st.error(f"Error: {e}")
+            else:
+                st.warning("Pehle koi topic to likhen!")
+
+        # DISPLAY & DOWNLOAD
+        if 'notes_result' in st.session_state:
+            st.markdown("---")
+            tab1, tab2 = st.tabs(["📄 View Notes", "📥 Download PDF"])
+            
+            with tab1:
+                st.markdown(st.session_state['notes_result'])
+            
+            with tab2:
+                try:
+                    pdf_data = create_pdf(st.session_state['notes_result'])
+                    st.download_button(
+                        label="📥 Download PDF Document",
+                        data=bytes(pdf_data),
+                        file_name="PakAcademia_Notes.pdf",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"PDF Error: {e}")
+                    
+    except Exception as e:
+        st.error(f"Configuration Error: {e}")
 else:
-    st.error("Secrets mein GEMINI_API_KEYS (list) add karna lazmi hai!")
+    st.error("API Key Missing! Please add 'GEMINI_API_KEY' in Streamlit Secrets.")
 
-st.markdown("<div class='footer'>PakAcademia AI v2.1 | Empowering Future Leaders 🇵🇰</div>", unsafe_allow_html=True)
+# Footer
+st.markdown("<div class='footer'>PakAcademia AI | Made with ❤️ for the Students of Pakistan 🇵🇰</div>", unsafe_allow_html=True)
