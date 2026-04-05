@@ -13,29 +13,50 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- SMART GENERATION LOGIC (MULTI-KEY) ---
+# --- BACKEND LOGIC (MULTI-KEY & MODEL CHECK) ---
 def generate_content_with_retry(prompt):
-    """Sari keys bari bari check karta hai jab tak result na mil jaye"""
     if "GEMINI_API_KEYS" not in st.secrets:
         return None, "Secrets mein keys missing hain!"
     
     keys = list(st.secrets["GEMINI_API_KEYS"])
-    random.shuffle(keys) # Keys ko mix karna taake load divide ho
+    random.shuffle(keys) 
     
+    errors = []
     for key in keys:
         try:
+            # 1. Configure the API Key
             genai.configure(api_key=key.strip())
-            # Hum sirf 'gemini-1.5-flash' use karenge kyunke iska quota sab se zyada hai
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            # 2. Try to find the best model name available on THIS key
+            # Google sometimes needs 'models/gemini-1.5-flash' instead of just 'gemini-1.5-flash'
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            
+            # Priority List
+            target_model = None
+            if 'models/gemini-1.5-flash' in available_models:
+                target_model = 'models/gemini-1.5-flash'
+            elif 'models/gemini-1.5-pro' in available_models:
+                target_model = 'models/gemini-1.5-pro'
+            elif 'models/gemini-pro' in available_models:
+                target_model = 'models/gemini-pro'
+            else:
+                target_model = available_models[0] # Jo bhi mil jaye
+            
+            # 3. Generate Content
+            model = genai.GenerativeModel(target_model)
             response = model.generate_content(prompt)
             return response.text, "Success"
+            
         except Exception as e:
-            if "429" in str(e):
-                continue # Agli key check karo
+            err_msg = str(e)
+            errors.append(err_msg)
+            # Agar quota (429) ya invalid key (400) hai to agli key try karo
+            if "429" in err_msg or "400" in err_msg or "404" in err_msg:
+                continue 
             else:
-                return None, str(e)
+                return None, err_msg
     
-    return None, "QUOTA_FULL"
+    return None, f"All keys failed. Last error: {errors[-1] if errors else 'Unknown'}"
 
 def create_pdf(text_content):
     pdf = FPDF()
@@ -57,7 +78,7 @@ with col2: length = st.selectbox("Length:", ["Short", "Medium", "Long"])
 
 if st.button("🚀 GENERATE NOTES"):
     if user_topic:
-        with st.spinner('Checking Servers & Generating Notes...'):
+        with st.spinner('Checking Servers & Finding Best Model...'):
             prompt = f"Topic: {user_topic}, Language: {lang}, Length: {length}. Provide professional university notes with headings and 3 exam questions."
             
             notes, status = generate_content_with_retry(prompt)
@@ -65,10 +86,9 @@ if st.button("🚀 GENERATE NOTES"):
             if notes:
                 st.session_state['notes'] = notes
                 st.success("Notes Generated Successfully!")
-            elif status == "QUOTA_FULL":
-                st.error("⚠️ **Limit Exhausted:** Sabhi API keys ka quota khatam ho gaya hai. Please 1 minute baad try karen ya developer ko batayen ke mazeed keys add kare.")
             else:
-                st.error(f"Error: {status}")
+                st.error(f"Error Details: {status}")
+                st.info("Mashwara: 1 minute baad dobara try karen ya API Keys check karen.")
     else:
         st.warning("Please enter a topic!")
 
@@ -77,7 +97,10 @@ if 'notes' in st.session_state:
     tab1, tab2 = st.tabs(["📝 View Notes", "📥 Download PDF"])
     with tab1: st.markdown(st.session_state['notes'])
     with tab2:
-        pdf_bytes = create_pdf(st.session_state['notes'])
-        st.download_button("📥 Download PDF", data=bytes(pdf_bytes), file_name="PakAcademia_Notes.pdf")
+        try:
+            pdf_bytes = create_pdf(st.session_state['notes'])
+            st.download_button("📥 Download PDF", data=bytes(pdf_bytes), file_name="PakAcademia_Notes.pdf")
+        except:
+            st.error("PDF generation failed due to special characters.")
 
-st.markdown("<div style='text-align:center; padding-top:50px;'>PakAcademia AI | 🇵🇰 Pakistan's Future Leaders</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; padding-top:50px;'>PakAcademia AI | 🇵🇰 Pakistan</div>", unsafe_allow_html=True)
