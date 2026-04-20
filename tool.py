@@ -3,61 +3,85 @@ import google.generativeai as genai
 from fpdf import FPDF
 import random
 
-# --- UI SETUP ---
-st.set_page_config(page_title="PakAcademia AI", page_icon="🇵🇰", layout="centered")
+# --- 1. PREMIUM FRONTEND (CSS) ---
+st.set_page_config(page_title="PakAcademia AI | Pro Assistant", page_icon="🎓", layout="centered")
 
 st.markdown("""
     <style>
-    .stButton>button { width: 100%; border-radius: 12px; height: 3.5em; background-color: #006644; color: white; font-weight: 700; }
-    h1 { color: #006644; text-align: center; }
+    /* Global Styles */
+    .main { background-color: #f8f9fa; }
+    
+    /* Header Styling */
+    .main-header {
+        font-size: 45px !important;
+        font-weight: 800;
+        color: #004D40;
+        text-align: center;
+        margin-bottom: 10px;
+        font-family: 'Helvetica Neue', sans-serif;
+    }
+    .sub-header {
+        font-size: 18px;
+        color: #555;
+        text-align: center;
+        margin-bottom: 40px;
+    }
+
+    /* Card Styling for Input */
+    .input-card {
+        background-color: white;
+        padding: 25px;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        margin-bottom: 20px;
+    }
+
+    /* Button Styling */
+    .stButton>button {
+        width: 100%;
+        border-radius: 10px;
+        height: 3.5em;
+        background: linear-gradient(135deg, #006644 0%, #004D40 100%);
+        color: white;
+        font-weight: 700;
+        font-size: 18px;
+        border: none;
+        transition: 0.3s all;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 102, 68, 0.3);
+        color: #f1f1f1;
+    }
+
+    /* Note Content Styling */
+    .notes-box {
+        background-color: #ffffff;
+        border-left: 5px solid #006644;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+    }
+
+    /* Customizing Text Area */
+    .stTextArea textarea {
+        border-radius: 10px !important;
+        border: 1px solid #ddd !important;
+    }
+    
+    /* Tabs Styling */
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    .stTabs [data-baseweb="tab"] {
+        background-color: #f1f1f1;
+        border-radius: 5px 5px 0 0;
+        padding: 10px 20px;
+    }
+    .stTabs [aria-selected="true"] { background-color: #006644 !important; color: white !important; }
+
     </style>
     """, unsafe_allow_html=True)
 
-# --- BACKEND LOGIC (MULTI-KEY & MODEL CHECK) ---
-def generate_content_with_retry(prompt):
-    if "GEMINI_API_KEYS" not in st.secrets:
-        return None, "Secrets mein keys missing hain!"
-    
-    keys = list(st.secrets["GEMINI_API_KEYS"])
-    random.shuffle(keys) 
-    
-    errors = []
-    for key in keys:
-        try:
-            # 1. Configure the API Key
-            genai.configure(api_key=key.strip())
-            
-            # 2. Try to find the best model name available on THIS key
-            # Google sometimes needs 'models/gemini-1.5-flash' instead of just 'gemini-1.5-flash'
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            
-            # Priority List
-            target_model = None
-            if 'models/gemini-1.5-flash' in available_models:
-                target_model = 'models/gemini-1.5-flash'
-            elif 'models/gemini-1.5-pro' in available_models:
-                target_model = 'models/gemini-1.5-pro'
-            elif 'models/gemini-pro' in available_models:
-                target_model = 'models/gemini-pro'
-            else:
-                target_model = available_models[0] # Jo bhi mil jaye
-            
-            # 3. Generate Content
-            model = genai.GenerativeModel(target_model)
-            response = model.generate_content(prompt)
-            return response.text, "Success"
-            
-        except Exception as e:
-            err_msg = str(e)
-            errors.append(err_msg)
-            # Agar quota (429) ya invalid key (400) hai to agli key try karo
-            if "429" in err_msg or "400" in err_msg or "404" in err_msg:
-                continue 
-            else:
-                return None, err_msg
-    
-    return None, f"All keys failed. Last error: {errors[-1] if errors else 'Unknown'}"
-
+# --- 2. BACKEND FUNCTIONS ---
 def create_pdf(text_content):
     pdf = FPDF()
     pdf.add_page()
@@ -67,40 +91,95 @@ def create_pdf(text_content):
     pdf.multi_cell(0, 10, txt=final_text)
     return pdf.output()
 
-# --- MAIN APP ---
-st.title("🇵🇰 PakAcademia AI")
-st.markdown("<p style='text-align: center;'>Smart Academic Assistant for Students</p>", unsafe_allow_html=True)
-
-user_topic = st.text_area("Enter Topic or Question:", height=150)
-col1, col2 = st.columns(2)
-with col1: lang = st.selectbox("Language:", ["English", "Roman Urdu", "Urdu"])
-with col2: length = st.selectbox("Length:", ["Short", "Medium", "Long"])
-
-if st.button("🚀 GENERATE NOTES"):
-    if user_topic:
-        with st.spinner('Checking Servers & Finding Best Model...'):
-            prompt = f"Topic: {user_topic}, Language: {lang}, Length: {length}. Provide professional university notes with headings and 3 exam questions."
-            
-            notes, status = generate_content_with_retry(prompt)
-            
-            if notes:
-                st.session_state['notes'] = notes
-                st.success("Notes Generated Successfully!")
-            else:
-                st.error(f"Error Details: {status}")
-                st.info("Mashwara: 1 minute baad dobara try karen ya API Keys check karen.")
-    else:
-        st.warning("Please enter a topic!")
-
-if 'notes' in st.session_state:
-    st.markdown("---")
-    tab1, tab2 = st.tabs(["📝 View Notes", "📥 Download PDF"])
-    with tab1: st.markdown(st.session_state['notes'])
-    with tab2:
+def generate_streaming_notes(prompt):
+    if "GEMINI_API_KEYS" not in st.secrets:
+        return None, "API Keys Missing"
+    
+    keys = list(st.secrets["GEMINI_API_KEYS"])
+    random.shuffle(keys)
+    
+    for key in keys:
         try:
-            pdf_bytes = create_pdf(st.session_state['notes'])
-            st.download_button("📥 Download PDF", data=bytes(pdf_bytes), file_name="PakAcademia_Notes.pdf")
-        except:
-            st.error("PDF generation failed due to special characters.")
+            genai.configure(api_key=key.strip())
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(prompt, stream=True)
+            return response, "Success"
+        except Exception as e:
+            if "429" in str(e): continue
+            else: return None, str(e)
+    return None, "QUOTA_FULL"
 
-st.markdown("<div style='text-align:center; padding-top:50px;'>PakAcademia AI | 🇵🇰 Pakistan</div>", unsafe_allow_html=True)
+# --- 3. UI LAYOUT ---
+
+st.markdown('<div class="main-header">🎓 PakAcademia AI</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Pakistan’s most advanced AI-powered academic assistant</div>', unsafe_allow_html=True)
+
+# Input Section in a nice layout
+with st.container():
+    st.markdown('<div class="input-card">', unsafe_allow_html=True)
+    user_topic = st.text_area("What would you like to learn today?", height=150, placeholder="Example: Briefly explain the 1973 Constitution or the laws of Thermodynamics...")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        lang = st.selectbox("Output Language", ["English", "Roman Urdu (Hinglish)", "Urdu (اردو)"])
+    with c2:
+        length = st.selectbox("Select Depth", ["Short Summary", "Medium Detail", "Comprehensive"])
+    
+    generate_btn = st.button("✨ Generate Intelligent Notes")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# --- 4. PROCESSING & OUTPUT ---
+if generate_btn:
+    if user_topic:
+        st.markdown("---")
+        notes_placeholder = st.empty()
+        full_response = ""
+        
+        prompt = f"Role: Senior Professor. Topic: {user_topic}. Language: {lang}. Depth: {length}. Instruction: Provide high-quality academic notes with headings and 3 exam questions."
+        
+        stream, status = generate_streaming_notes(prompt)
+        
+        if status == "Success":
+            with st.status("🧠 Synthesizing Academic Content...", expanded=True) as status_box:
+                for chunk in stream:
+                    full_response += chunk.text
+                    notes_placeholder.markdown(f'<div class="notes-box">{full_response}▌</div>', unsafe_allow_html=True)
+                notes_placeholder.markdown(f'<div class="notes-box">{full_response}</div>', unsafe_allow_html=True)
+                st.session_state['final_notes'] = full_response
+                status_box.update(label="✅ Notes Completed!", state="complete", expanded=False)
+        elif status == "QUOTA_FULL":
+            st.error("⚠️ All servers are currently busy. Please retry in 60 seconds.")
+        else:
+            st.error(f"Error: {status}")
+    else:
+        st.warning("Please enter a topic or question to begin.")
+
+# --- 5. TABS FOR VIEWING & EXPORT ---
+if 'final_notes' in st.session_state:
+    st.write("###")
+    t1, t2 = st.tabs(["📝 Read Notes", "📥 Export & Save"])
+    
+    with t1:
+        st.markdown(st.session_state['final_notes'])
+    
+    with t2:
+        st.info("Download your notes in PDF format for offline study.")
+        try:
+            pdf_bytes = create_pdf(st.session_state['final_notes'])
+            st.download_button(
+                label="📥 Download PDF Document",
+                data=bytes(pdf_bytes),
+                file_name="PakAcademia_Notes.pdf",
+                mime="application/pdf"
+            )
+        except:
+            st.error("PDF Export is currently limited for Urdu script. Please copy the text directly.")
+
+# Footer
+st.markdown("""
+    <div class="footer">
+        <br><br>
+        <p>Made with ❤️ by <b>Muneeb Haider</b> for Pakistani Students</p>
+        <p style="font-size: 12px; color: #999;">PakAcademia AI v2.5 | Powering Education through GenAI</p>
+    </div>
+    """, unsafe_allow_html=True)
