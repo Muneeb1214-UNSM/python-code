@@ -3,52 +3,59 @@ import google.generativeai as genai
 from fpdf import FPDF
 import random
 
-# --- 1. PREMIUM FRONTEND (CSS) ---
+# --- 1. CLEAN FRONTEND SETUP ---
 st.set_page_config(page_title="PakAcademia AI", page_icon="🎓", layout="centered")
 
 st.markdown("""
     <style>
-    .main { background-color: #f8f9fa; }
-    .main-header { font-size: 42px !important; font-weight: 800; color: #004D40; text-align: center; margin-bottom: 5px; }
-    .sub-header { font-size: 16px; color: #666; text-align: center; margin-bottom: 30px; }
+    /* Pure clean background */
+    .stApp { background-color: #ffffff; }
     
-    /* Input Section Styling */
-    .input-container {
-        background-color: white;
-        padding: 20px;
-        border-radius: 15px;
-        border: 1px solid #eee;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+    .main-header { font-size: 38px !important; font-weight: 800; color: #004D40; text-align: center; margin-bottom: 0px; }
+    .sub-header { font-size: 15px; color: #666; text-align: center; margin-bottom: 25px; }
+    
+    /* Input Area - Transparent & Minimal */
+    .stTextArea textarea {
+        border: 1px solid #006644 !important;
+        border-radius: 10px !important;
+        background-color: #fcfcfc !important;
     }
-    
-    /* Professional Button */
+
+    /* Button Styling */
     .stButton>button {
         width: 100%;
         border-radius: 10px;
         height: 3.5em;
-        background: linear-gradient(135deg, #006644 0%, #004D40 100%);
+        background: #006644;
         color: white;
         font-weight: 700;
         border: none;
     }
-    
-    /* Result Box - Only shows when notes are ready */
-    .final-notes {
-        background-color: #ffffff;
+
+    /* Notes Box - This only appears AFTER generation */
+    .final-notes-card {
         border-left: 5px solid #006644;
+        background-color: #f9f9f9;
         padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 15px rgba(0,0,0,0.05);
+        border-radius: 0px 10px 10px 0px;
         margin-top: 20px;
+        font-size: 16px;
+        line-height: 1.6;
+        color: #333;
+    }
+    
+    /* Hiding Streamlit default elements that look like white blocks */
+    div[data-testid="stVerticalBlock"] > div:empty {
+        display: none !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 2. BACKEND LOGIC ---
-def find_best_model():
+def find_active_model():
     try:
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        for preferred in ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro']:
+        for preferred in ['models/gemini-1.5-flash', 'models/gemini-pro']:
             if preferred in available_models: return preferred
         return available_models[0]
     except: return "models/gemini-pro"
@@ -64,66 +71,64 @@ def create_pdf(text_content):
 
 # --- 3. UI LAYOUT ---
 st.markdown('<div class="main-header">🎓 PakAcademia AI</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Advanced Academic Assistant for Pakistani Students</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Your Intelligent Study Partner</div>', unsafe_allow_html=True)
 
-with st.container():
-    st.markdown('<div class="input-container">', unsafe_allow_html=True)
-    user_topic = st.text_area("What is your topic today?", height=120, placeholder="e.g. Explain the importance of the 1940 Resolution...")
-    
-    c1, c2 = st.columns(2)
-    with c1: lang = st.selectbox("Language", ["English", "Roman Urdu (Hinglish)", "Urdu (اردو)"])
-    with c2: length = st.selectbox("Notes Length", ["Short", "Medium", "Long"])
-    
-    generate_btn = st.button("✨ Generate Notes")
-    st.markdown('</div>', unsafe_allow_html=True)
+# Transparent Input Section
+user_topic = st.text_area("What is your topic today?", height=100, placeholder="Type here...")
+c1, c2 = st.columns(2)
+with c1: lang = st.selectbox("Language", ["English", "Roman Urdu (Hinglish)", "Urdu (اردو)"])
+with c2: length = st.selectbox("Depth", ["Short", "Medium", "Long"])
+generate_btn = st.button("✨ Start Generating Notes")
 
-# --- 4. STREAMING & DISPLAY ---
+# --- 4. STREAMING ENGINE ---
 if generate_btn:
     if user_topic:
         st.write("---")
-        # Khali placeholder - Is mein koi dabba nahi hai abhi
-        notes_placeholder = st.empty()
-        full_response = ""
+        # Absolutely NO container or status box here
+        notes_placeholder = st.empty() # Totally empty start
+        full_text = ""
         
         try:
-            # Keys Rotation
+            # Multi-Key Check
             keys = list(st.secrets["GEMINI_API_KEYS"])
             random.shuffle(keys)
             genai.configure(api_key=keys[0].strip())
             
-            model_path = find_best_model()
-            model = genai.GenerativeModel(model_path)
+            model_name = find_active_model()
+            model = genai.GenerativeModel(model_name)
             
-            prompt = f"Role: University Professor. Topic: {user_topic}. Language: {lang}. Depth: {length}. Instruction: Provide high-quality academic notes with headings and questions."
+            prompt = f"Provide university level notes on: {user_topic}. Language: {lang}. Length: {length}. Use headings and bullet points."
             
-            # Streaming Start
+            # Start Streaming
             response = model.generate_content(prompt, stream=True)
             
-            # Words display ho rahe hain baghair kisi "white box" ke
             for chunk in response:
-                full_response += chunk.text
-                notes_placeholder.markdown(full_response + "▌")
+                full_text += chunk.text
+                # Display plain text during stream (No boxes)
+                notes_placeholder.write(full_text)
             
-            # Jab poora ho jaye, tab khubsurat box mein dalo
-            notes_placeholder.markdown(f'<div class="final-notes">{full_response}</div>', unsafe_allow_html=True)
-            st.session_state['final_notes'] = full_response
-            st.balloons() # Success animation
+            # When finished, wrap in the final styling
+            notes_placeholder.markdown(f'<div class="final-notes-card">{full_text}</div>', unsafe_allow_html=True)
+            st.session_state['saved_notes'] = full_text
+            st.toast("Notes Completed! 🇵🇰")
 
         except Exception as e:
-            if "429" in str(e): st.error("Server busy! Please try again in a few seconds.")
+            if "429" in str(e): st.warning("Servers are busy. Retrying in 10s...")
             else: st.error(f"Error: {e}")
     else:
-        st.warning("Please enter a topic.")
+        st.error("Please enter a topic first.")
 
-# --- 5. TABS & EXPORT ---
-if 'final_notes' in st.session_state:
+# --- 5. EXPORT OPTIONS ---
+if 'saved_notes' in st.session_state:
     st.write("###")
-    t1, t2 = st.tabs(["📝 View Full Notes", "📥 Download PDF"])
-    with t1: st.markdown(st.session_state['final_notes'])
-    with t2:
+    tab_view, tab_pdf = st.tabs(["📄 Read Mode", "📥 Export PDF"])
+    with tab_view:
+        st.markdown(st.session_state['saved_notes'])
+    with tab_pdf:
         try:
-            pdf_bytes = create_pdf(st.session_state['final_notes'])
-            st.download_button("📥 Download Official PDF", data=bytes(pdf_bytes), file_name="PakAcademia_Notes.pdf")
-        except: st.error("PDF download issues? Copy the text directly.")
+            pdf_data = create_pdf(st.session_state['saved_notes'])
+            st.download_button("📥 Download Official PDF", data=bytes(pdf_data), file_name="PakAcademia_AI.pdf")
+        except:
+            st.info("PDF support for Urdu Script is coming soon. Please copy text directly.")
 
-st.markdown("<div style='text-align:center; padding:40px; color:#888; font-size:12px;'>PakAcademia AI | 🇵🇰 Pakistan</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; margin-top:50px; color:#aaa; font-size:11px;'>Muneeb Haider | PakAcademia AI v2.6</div>", unsafe_allow_html=True)
