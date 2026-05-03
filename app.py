@@ -1,93 +1,109 @@
-import streamlit as st
-import asyncio
+
 import os
+import subprocess
+import sys
+import asyncio
+
+# --- STEP 1: PLAYWRIGHT INSTALLATION (Streamlit Cloud ke liye zaroori hai) ---
+def install_playwright():
+    try:
+        # Check if playwright is already installed
+        import playwright
+    except ImportError:
+        subprocess.run([sys.executable, "-m", "pip", "install", "playwright"])
+    
+    # Browser install karne ke liye command
+    subprocess.run(["playwright", "install", "chromium"])
+    # System dependencies install karne ke liye (Linux servers par)
+    subprocess.run(["playwright", "install-deps"])
+
+# App start hote hi installation check karein
+if "playwright_installed" not in os.environ:
+    install_playwright()
+    os.environ["playwright_installed"] = "true"
+
+import streamlit as st
 from langchain_openai import ChatOpenAI
-from browser_use import Agent
+from browser_use import Agent, Browser, BrowserConfig
 from dotenv import load_dotenv
 
-# Load Environment Variables (API Key)
 load_dotenv()
 
-# --- Page Configuration ---
-st.set_page_config(page_title="AI Web Commander", page_icon="🤖", layout="wide")
+# --- UI Setup ---
+st.set_page_config(page_title="AI Browser Agent", page_icon="🤖")
 
-# Custom CSS for Styling
-st.markdown("""
-    <style>
-    .main { background-color: #f0f2f6; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; background-color: #FF4B4B; color: white; }
-    .status-box { padding: 20px; border-radius: 10px; background-color: white; border: 1px solid #ddd; }
-    </style>
-    """, unsafe_allow_html=True)
+st.title("🤖 Vision Web AI Agent")
+st.markdown("Yeh agent aapke liye browser control karega. Aap command dein, baki kaam AI karega.")
 
-# --- Sidebar (Configuration) ---
+# Sidebar for Settings
 with st.sidebar:
-    st.title("⚙️ Settings")
-    api_key = st.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
-    model_choice = st.selectbox("Choose Model", ["gpt-4o", "gpt-4o-mini"])
-    st.info("Tip: Demo ke liye 'gpt-4o' behtar hai kyunki ye browsing commands ko ache se samajhta hai.")
+    st.header("Settings")
+    api_key = st.text_input("Enter OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
+    model_name = st.selectbox("Model", ["gpt-4o", "gpt-4o-mini"], index=0)
+    st.info("Note: Task ki video recording automatically generate hogi.")
 
-# --- Main UI ---
-st.title("🌐 AI Browser Commander")
-st.subheader("Bataiye mujhe kya karna hai, main browser control karunga!")
+# User Command Input
+user_task = st.text_area("Aap kya karwana chahte hain?", placeholder="e.g. Open YouTube and search for Coke Studio Pakistani songs.")
 
-# Example Commands
-with st.expander("💡 Ideas for commands:"):
-    st.write("- Go to YouTube and search for 'Python Tutorial'.")
-    st.write("- Open Gmail and check if I have any new emails.")
-    st.write("- Go to Amazon, find a gaming mouse under $50 and show me.")
-    st.write("- Open Wikipedia and search for 'Artificial Intelligence', then summarize the first paragraph.")
-
-# User Input
-user_prompt = st.text_area("Enter your command:", placeholder="e.g., Search for latest AI news on Google and show me the headlines.", height=100)
-
-# Function to run the AI Agent
-async def run_browser_agent(prompt, api_key, model):
-    if not api_key:
-        st.error("❌ Please provide an API Key!")
-        return
-
-    # Initialize LLM
+# --- STEP 2: AGENT LOGIC ---
+async def run_agent(task, api_key, model):
+    # LLM Setup
     llm = ChatOpenAI(model=model, api_key=api_key)
     
-    # Initialize Agent
-    # generate_gif=True se aap bad mein video bhi dikha sakte hain (Optional)
+    # Browser Config: Streamlit Cloud par 'headless=True' hona chahiye
+    # Hum video save karne ke liye folder path bhi de rahe hain
+    browser = Browser(
+        config=BrowserConfig(
+            headless=True,  # Cloud compatibility
+        )
+    )
+    
+    # Agent Initialization
     agent = Agent(
-        task=prompt,
+        task=task,
         llm=llm,
+        browser=browser,
+        generate_gif=False, # Hum video use karenge
     )
 
-    # Run the agent
+    # Run Agent
     result = await agent.run()
+    
+    # Recording ka path (browser-use automatically videos/ folder mein save karta hai)
+    # Humein latest video dhoondni hogi
     return result
 
-# --- Execution ---
-if st.button("Execute Task 🚀"):
-    if user_prompt:
-        st.divider()
-        with st.status("🤖 Agent is thinking and working...", expanded=True) as status:
-            st.write("Initializing Browser...")
-            
-            # Running the async agent in Streamlit
-            try:
+# --- STEP 3: BUTTON & EXECUTION ---
+if st.button("Run Agent 🚀"):
+    if not api_key:
+        st.error("Please enter your OpenAI API Key in the sidebar!")
+    elif not user_task:
+        st.warning("Please enter a command for the agent.")
+    else:
+        try:
+            with st.status("AI Agent kaam kar raha hai... Ismein 1-2 minute lag sakte hain.", expanded=True) as status:
+                # Run the async function
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(run_browser_agent(user_prompt, api_key, model_choice))
+                final_result = loop.run_until_complete(run_agent(user_task, api_key, model_name))
                 
-                st.write("Finalizing results...")
-                status.update(label="✅ Task Accomplished!", state="complete", expanded=False)
+                status.update(label="✅ Task Mukammal!", state="complete")
                 
-                # Success Display
-                st.balloons()
-                st.success("Task Finished Successfully!")
-                st.markdown("### 📝 Agent's Final Report:")
-                st.write(result)
+                st.success("Agent ne apna kaam khatam kar liya hai!")
+                st.write("### Result Summary:")
+                st.write(final_result)
                 
-            except Exception as e:
-                st.error(f"Error occurred: {str(e)}")
-    else:
-        st.warning("Please enter a command first!")
+                # Agar koi video save hui hai to usay dikhayein
+                video_folder = "./videos" # Default folder for browser-use recordings
+                if os.path.exists(video_folder):
+                    files = os.listdir(video_folder)
+                    if files:
+                        latest_video = max([os.path.join(video_folder, f) for f in files], key=os.path.getctime)
+                        st.write("### Execution Recording:")
+                        st.video(latest_video)
 
-# --- Footer ---
-st.markdown("---")
-st.markdown("<p style='text-align: center;'>Built for Hackathon | Powered by browser-use & GPT-4o</p>", unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Ek error aaya hai: {str(e)}")
+
+st.divider()
+st.caption("Hackathon Project | Powered by browser-use & OpenAI")
