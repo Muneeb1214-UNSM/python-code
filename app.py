@@ -1,26 +1,29 @@
-
 import os
 import subprocess
 import sys
 import asyncio
 
-# --- STEP 1: PLAYWRIGHT INSTALLATION (Streamlit Cloud ke liye zaroori hai) ---
+# --- STEP 1: PLAYWRIGHT INSTALLATION ---
 def install_playwright():
     try:
-        # Check if playwright is already installed
         import playwright
     except ImportError:
         subprocess.run([sys.executable, "-m", "pip", "install", "playwright"])
     
-    # Browser install karne ke liye command
-    subprocess.run(["playwright", "install", "chromium"])
-    # System dependencies install karne ke liye (Linux servers par)
-    subprocess.run(["playwright", "install-deps"])
+    # Chromium aur uski dependencies install karne ka sabse sahi tareeka
+    try:
+        # Install chromium
+        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+        # Install system dependencies (Linux ke liye)
+        subprocess.run([sys.executable, "-m", "playwright", "install-deps"], check=True)
+    except Exception as e:
+        print(f"Playwright installation warning: {e}")
 
-# App start hote hi installation check karein
-if "playwright_installed" not in os.environ:
-    install_playwright()
-    os.environ["playwright_installed"] = "true"
+# App start hote hi ek baar installation run karein
+if "playwright_installed" not in st.session_state:
+    with st.spinner("Setting up browser environment... Please wait."):
+        install_playwright()
+        st.session_state.playwright_installed = True
 
 import streamlit as st
 from langchain_openai import ChatOpenAI
@@ -31,79 +34,61 @@ load_dotenv()
 
 # --- UI Setup ---
 st.set_page_config(page_title="AI Browser Agent", page_icon="🤖")
-
 st.title("🤖 Vision Web AI Agent")
-st.markdown("Yeh agent aapke liye browser control karega. Aap command dein, baki kaam AI karega.")
 
-# Sidebar for Settings
+# Sidebar
 with st.sidebar:
     st.header("Settings")
     api_key = st.text_input("Enter OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""))
     model_name = st.selectbox("Model", ["gpt-4o", "gpt-4o-mini"], index=0)
-    st.info("Note: Task ki video recording automatically generate hogi.")
 
-# User Command Input
-user_task = st.text_area("Aap kya karwana chahte hain?", placeholder="e.g. Open YouTube and search for Coke Studio Pakistani songs.")
+user_task = st.text_area("Aap kya karwana chahte hain?", placeholder="e.g. Open YouTube and search for Coke Studio.")
 
 # --- STEP 2: AGENT LOGIC ---
 async def run_agent(task, api_key, model):
-    # LLM Setup
     llm = ChatOpenAI(model=model, api_key=api_key)
     
-    # Browser Config: Streamlit Cloud par 'headless=True' hona chahiye
-    # Hum video save karne ke liye folder path bhi de rahe hain
+    # Browser ko 'headless' mode mein chalana cloud ke liye lazmi hai
     browser = Browser(
-        config=BrowserConfig(
-            headless=True,  # Cloud compatibility
-        )
+        config=BrowserConfig(headless=True)
     )
     
-    # Agent Initialization
     agent = Agent(
         task=task,
         llm=llm,
-        browser=browser,
-        generate_gif=False, # Hum video use karenge
+        browser=browser
     )
 
-    # Run Agent
     result = await agent.run()
-    
-    # Recording ka path (browser-use automatically videos/ folder mein save karta hai)
-    # Humein latest video dhoondni hogi
     return result
 
-# --- STEP 3: BUTTON & EXECUTION ---
+# --- STEP 3: RUN ---
 if st.button("Run Agent 🚀"):
     if not api_key:
-        st.error("Please enter your OpenAI API Key in the sidebar!")
+        st.error("Sidebar mein OpenAI API Key dalein!")
     elif not user_task:
-        st.warning("Please enter a command for the agent.")
+        st.warning("Command to likhein!")
     else:
         try:
-            with st.status("AI Agent kaam kar raha hai... Ismein 1-2 minute lag sakte hain.", expanded=True) as status:
-                # Run the async function
+            with st.status("AI Agent kaam kar raha hai...", expanded=True) as status:
+                # Video recording directory create karna
+                if not os.path.exists("./videos"):
+                    os.makedirs("./videos")
+                
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 final_result = loop.run_until_complete(run_agent(user_task, api_key, model_name))
                 
-                status.update(label="✅ Task Mukammal!", state="complete")
-                
-                st.success("Agent ne apna kaam khatam kar liya hai!")
-                st.write("### Result Summary:")
+                status.update(label="✅ Task Complete!", state="complete")
+                st.success("Agent ne kaam khatam kar liya!")
                 st.write(final_result)
-                
-                # Agar koi video save hui hai to usay dikhayein
-                video_folder = "./videos" # Default folder for browser-use recordings
-                if os.path.exists(video_folder):
-                    files = os.listdir(video_folder)
-                    if files:
-                        latest_video = max([os.path.join(video_folder, f) for f in files], key=os.path.getctime)
-                        st.write("### Execution Recording:")
+
+                # Video check
+                if os.path.exists("./videos"):
+                    videos = [f for f in os.listdir("./videos") if f.endswith(".mp4")]
+                    if videos:
+                        latest_video = os.path.join("./videos", videos[-1])
                         st.video(latest_video)
 
         except Exception as e:
-            st.error(f"Ek error aaya hai: {str(e)}")
-
-st.divider()
-st.caption("Hackathon Project | Powered by browser-use & OpenAI")
+            st.error(f"Error: {str(e)}")
