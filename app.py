@@ -1,6 +1,23 @@
 import os
 import subprocess
 import sys
+
+# Sabse pehle libraries install karne ki koshish karein (Force Install)
+def force_install_requirements():
+    try:
+        import langchain_openai
+        import browser_use
+    except ImportError:
+        subprocess.run([sys.executable, "-m", "pip", "install", "langchain-openai", "browser-use", "playwright"], check=True)
+
+force_install_requirements()
+
+import streamlit as st
+# Baaki imports ab iske niche aayenge...
+
+import os
+import subprocess
+import sys
 import asyncio
 import streamlit as st  # Pehle import karna zaroori hai
 
