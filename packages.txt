@@ -1,11 +1,5 @@
-libgbm1
 libnss3
 libatk-bridge2.0-0
 libgtk-3-0
+libgbm1
 libasound2
-libxkbcommon0
-libxcomposite1
-libxdamage1
-libxrandr2
-libgbm-dev
-libasound2-dev
